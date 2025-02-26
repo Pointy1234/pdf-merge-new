@@ -196,6 +196,50 @@ app.post('/process-pdfs', async (req, res) => {
     }
 });
 
+app.post('/add-text-to-pdf', async (req, res) => {
+    const { url, texts } = req.body;
+
+    if (!url || !Array.isArray(texts) || texts.length === 0) {
+        return res.status(400).json({ error: 'Необходимо передать url и массив texts с параметрами x, y, text, fontSize.' });
+    }
+
+    try {
+        const tempFilePath = './temp/temp.pdf';
+        await downloadFile(url, tempFilePath);
+
+        const pdfBytes = await fs.promises.readFile(tempFilePath);
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+
+        pdfDoc.registerFontkit(fontkit);
+        const fontPath = './fonts/643e59524d730ce6c6f2384eebf945f8.ttf';
+        let customFont;
+        if (fs.existsSync(fontPath)) {
+            const fontBytes = await fs.promises.readFile(fontPath);
+            customFont = await pdfDoc.embedFont(fontBytes);
+        }
+
+        const firstPage = pdfDoc.getPages()[0];
+        texts.forEach(({ text, x, y, fontSize }) => {
+            firstPage.drawText(text, {
+                x,
+                y,
+                size: fontSize || 12,
+                font: customFont || firstPage.getFont(),
+                color: rgb(0.75, 0.75, 0.75),
+            });
+        });
+
+        const modifiedPdfBytes = await pdfDoc.save();
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="modified.pdf"');
+        res.send(Buffer.from(modifiedPdfBytes));
+    } catch (error) {
+        console.error('Ошибка при обработке PDF:', error);
+        res.status(500).json({ error: 'Ошибка при обработке PDF.' });
+    }
+});
+
+
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
     console.log(`Сервер запущен на порту ${port}`);
